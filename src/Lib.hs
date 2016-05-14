@@ -1,10 +1,11 @@
 module Lib where
 
 import Data.Graph.Inductive.Graph
-import Data.Graph.Inductive.Query.DFS (dffWith)
+import Data.Graph.Inductive.Query.DFS (dffWith, topsort)
 import Data.List (find, partition)
 import Data.Maybe (listToMaybe)
 import Data.Tree
+import Data.Tuple (swap)
 
 -- | a primitive control flow graph implementation
 data CFG a b = CFG [LNode a] [LEdge b]
@@ -52,9 +53,10 @@ instance DynGraph CFG where
 
 -- | construct a DFS tree representing node traversal and containing backedge
 -- source nodes for each node visited
-dfsTree :: Graph gr => Node -> gr a b -> Maybe (Tree (Node, [Node]))
+dfsTree :: Graph gr => Node -> gr a b -> Maybe (Tree (Node, [LEdge b]))
 dfsTree n = listToMaybe . dffWith go [n]
-    where go (inEdges, n, _, _) = (n, map snd inEdges)
+    where go (inEdges, n, _, _) = (n, map makeLEdge inEdges)
+          makeLEdge (label, from) = (from, n, label)
 
 -- | postorder of the tree we got from a DFS traversal
 -- Doesn't use folds because I'm too lazy to read how exactly containers
@@ -62,13 +64,21 @@ dfsTree n = listToMaybe . dffWith go [n]
 postorder :: Tree a -> [a]
 postorder (Node a as) = (as >>= postorder) ++ [a]
 
+-- | given the DFS tree of a graph, compute it's acyclic version
+computeDAG :: DynGraph gr => gr a b -> Tree (Node, [LEdge b]) -> gr a b
+computeDAG gr t = case foldr go [] t of
+                    [] -> gr
+                    es -> foldr (delEdge . toEdge) gr es
+    where go (_, []) edges = edges
+          go (_, es) edges = es ++ edges
+
 -- | a path in a graph
 type CFGPath = [LEdge Bool]
 
 -- | a type representing a reaching condition of a node
 data Condition
-    = And Condition Condition
-    | Or Condition Condition
+    = And [Condition]
+    | Or [Condition]
     | TrueEdge Node Node
     | FalseEdge Node Node
     | Trivial
@@ -78,15 +88,12 @@ data Condition
 -- | convert a path in a CFG to a condition that can be analyzed and reduced
 pathToCondition :: CFGPath -> Condition
 pathToCondition = foldl go Trivial
-    where go cond (from, to, tag)
-              | tag = And cond (TrueEdge from to)
-              | otherwise = And cond (FalseEdge from to)
-
--- | merge multiple conditions obtained from paths to determine a node's
--- reaching condition
-mergeConditions :: [Condition] -> Condition
-mergeConditions [] = Trivial
-mergeConditions cs = simplify $ foldl1 Or cs
+    where go (And cond) (from, to, tag)
+              | tag = And $ cond ++ [TrueEdge from to]
+              | otherwise = And $ cond ++ [FalseEdge from to]
+          go cond (from, to, tag)
+              | tag = And [cond, TrueEdge from to]
+              | otherwise = And [cond, FalseEdge from to]
 
 simplify :: Condition -> Condition
 simplify = undefined
