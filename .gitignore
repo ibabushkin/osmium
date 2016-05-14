@@ -1,8 +1,6 @@
 *~
 *.swp
 *.o
-.ropeproject/*
-*/.ropeproject/*
 dist/*
 .stack-work/*
-test/*_test
+goto_free.pdf
