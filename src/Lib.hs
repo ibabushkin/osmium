@@ -61,3 +61,32 @@ dfsTree n = listToMaybe . dffWith go [n]
 -- implements them, so it was easier to roll my own version
 postorder :: Tree a -> [a]
 postorder (Node a as) = (as >>= postorder) ++ [a]
+
+-- | a path in a graph
+type CFGPath = [LEdge Bool]
+
+-- | a type representing a reaching condition of a node
+data Condition
+    = And Condition Condition
+    | Or Condition Condition
+    | TrueEdge Node Node
+    | FalseEdge Node Node
+    | Trivial
+    | Impossible
+    deriving (Show, Eq)
+
+-- | convert a path in a CFG to a condition that can be analyzed and reduced
+pathToCondition :: CFGPath -> Condition
+pathToCondition = foldl go Trivial
+    where go cond (from, to, tag)
+              | tag = And cond (TrueEdge from to)
+              | otherwise = And cond (FalseEdge from to)
+
+-- | merge multiple conditions obtained from paths to determine a node's
+-- reaching condition
+mergeConditions :: [Condition] -> Condition
+mergeConditions [] = Trivial
+mergeConditions cs = simplify $ foldl1 Or cs
+
+simplify :: Condition -> Condition
+simplify = undefined
